@@ -218,6 +218,49 @@ single-player session looks like, i.e. what the XWA SP loopback must synthesize.
 off the single-player value, then follow that session into the craft-create
 message flow.
 
+## KEY REFRAME — the DirectPlay path is multiplayer-only
+
+Two facts change the picture:
+
+1. **`0xB4E5FC` is written only with `0,1,2,3`** at four consecutive menu
+   handlers (`0x4B12B9`/`0x4B1434`/`0x4B164E`/`0x4B186A`) — a classic 4-item
+   *connection* menu.
+2. **`sub_0x4C32A0` is a `DirectPlayEnumerate` wrapper**, not a static GUID
+   table: it enumerates the installed DirectPlay **service providers** and
+   returns the `0xB4E5FC`-th one's GUID:
+   ```asm
+   0x4C32A0  mov [0x639FB0],0 ; lea eax,[esp+4] ; push eax ; push cb=0x4C32D0
+   0x4C32B4  call DirectPlayEnumerate            ; -> callback picks index-th SP
+   0x4C32C0  mov eax,[0x639FB0] ; ret            ; return that provider's GUID
+   ```
+   `0xB4E5FC` is therefore an **index into the enumerated network providers**
+   (serial / modem / IPX / TCP-IP) — every option is a real network transport.
+
+**Implication:** the whole `0x4C2xxx`/`0x4C4xxx`/`~0x4CCxxx` DirectPlay session
+machinery is the **multiplayer** path. There is no null/loopback provider in it,
+so **XvT single-player (instant-action / training / historical combat) does not
+create its craft through DirectPlay** — it must use a separate, *local*
+object-spawn that reads the mission and instantiates craft directly.
+
+### Why this matters for XWA
+
+The XWA investigation (memory #48–75) concluded XWA single-player craft are
+gated behind the DirectPlay session/create loopback (`0x77330C`), which
+force-launch can't bootstrap → black flight view. XvT — the same engine — shows
+a **clean split**: DirectPlay for MP, a local spawn for SP. This raises a
+concrete, testable hypothesis for XWA:
+
+> XWA very likely also has a **local single-player craft-spawn** (invoked at
+> mission-load), and the DP-message create path the XWA effort kept hitting is
+> the *multiplayer-inherited* branch — not the SP one. The reason forcing the DP
+> path never converged may be that **it is the wrong path for single-player.**
+
+**Next (highest value):** locate XvT's single-player object/craft spawn — the
+function that reads a mission's flight groups and instantiates craft with **no
+DirectPlay involvement** — and map it back to XWA. If XWA has the analogous
+local spawn, driving *that* (instead of the DP loopback) is the likely route to
+craft on the XWA flight screen.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
