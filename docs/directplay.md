@@ -121,6 +121,38 @@ XWA SP path is emulating.
 **Trace next:** back-track `eax` (the provider GUID source) for clusters A/B/C
 to identify which is entered by instant-action/training (single-player).
 
+### `sub_0x4C4DD0` = generic `create_session(providerGUID)`
+
+The cluster-C `DirectPlayCreate` lives in a clean, self-contained function:
+
+```asm
+0x4C4DD0  sub esp, 0x150 ; push ebx/esi/edi/ebp      ; prologue (FPO)
+0x4C4DDC  mov  bl, [0xA49555]                         ; mode/state flag
+0x4C4DE7  mov  eax, [0xA70609] ; test eax,eax ; jne   ; IDEMPOTENT: skip if
+                                                       ; a session already exists
+0x4C4DF4  mov  eax, [esp+0x17C]                        ; providerGUID (ARGUMENT)
+0x4C4DFC  call sub_0x4C32A0                            ; resolve/validate provider
+0x4C4E06  jne  <create>                                ; valid -> DirectPlayCreate
+          ...                                          ; (invalid -> early return)
+```
+
+Takeaways for XWA:
+- The **provider GUID is a parameter** — the host/join/SP distinction is made by
+  the *caller*, not baked into the create function. `sub_0x4C32A0` is the shared
+  provider resolver (also called at `0x4C2560` in cluster B).
+- The `[0xA70609] != 0` idempotency guard means "don't re-create an existing
+  session" — a clean structural marker of where the session lifetime begins.
+- XvT's session-establish is a **single legible `create_session(provider)`**,
+  versus XWA's session bootstrap (`sub_0050C640`→`sub_00594063`) that could not
+  be stood up in SP force-launch. Mapping the XvT SP caller here shows exactly
+  which provider + call sequence brings a Totally Games session up locally.
+
+**Identifying SP:** find the caller of `sub_0x4C4DD0` (or its A/B siblings) that
+passes the **loopback/local DirectPlay service-provider GUID** (single-player
+hosts a local session with no remote clients). That caller + provider is the
+XWA SP-loopback blueprint. Requires the full `disasm.py` function-discovery pass
+to enumerate callers cleanly.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
