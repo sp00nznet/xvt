@@ -8,8 +8,8 @@ XvT is the **direct predecessor of the [X-Wing Alliance](https://github.com/sp00
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| **Phase 0** | **In Progress** | Media acquisition & extraction — retail + multiplayer ISOs and Balance of Power on disk; installed tree not yet extracted |
-| Phase 1 | Pending | Binary analysis — PE parsing, section mapping, import table (per-exe) |
+| **Phase 0** | **Complete** | Media acquisition & extraction — `Z_XVT__.EXE` (1.34 MB) + `XWINGTIE.EXE` (launcher) extracted from the Master Game Disc ISO |
+| **Phase 1** | **In Progress** | Binary analysis — PE parsed with the XWA toolchain: x86, base 0x400000, **no SafeDisc**, DirectPlay-heavy imports |
 | Phase 2 | Pending | Copy-protection handling & decrypted memory dump (if applicable) |
 | Phase 3 | Pending | Function discovery (Capstone linear sweep + function finder) |
 | Phase 4 | Pending | x86-to-C code generation (reuse XWA lifter/generator) |
@@ -43,17 +43,59 @@ See the XWA repo's `memory/` notes (#48–75) for the full flight-entry create-p
 | **Compiler** | Visual C++ (era: VC4.2/VC5 — confirm on extraction) | Visual C++ 6.0 |
 | **Dev path** | `K:\...` (Totally Games convention) | `K:\XWA\dev\` |
 
-## Target Media (Phase 0)
+## Target Media (Phase 0 — done)
 
 Present on disk under `G:\recomp\pc\xwingvstiefighter\` (not committed — see `.gitignore`):
 
 | File | Size | Notes |
 |------|------|-------|
-| `Star Wars X-Wing vs Tie Fighter - Master Game Disc (LucasArts) (1997).iso` | ~154 MB | Retail single-disc image |
+| `Star Wars X-Wing vs Tie Fighter - Master Game Disc (LucasArts) (1997).iso` | ~154 MB | Retail single-disc image — **executables extracted from here** |
 | `Star Wars X-Wing vs Tie Fighter - Multiplayer Disc (LucasArts) (1997).iso` | ~156 MB | Multiplayer disc |
 | `Disc.rar` | ~437 MB | Archived disc set (incl. Balance of Power) |
 
-**Next step:** extract/install to obtain the executable(s). XvT's primary executable and the Balance of Power binary, their compiler, image base, section layout, and any copy protection are recorded in *Binary Analysis* once extraction completes — this README intentionally does **not** guess those values.
+Extracted to git-ignored `game_data/` via `7z`:
+
+| Executable | Size | Date | Role |
+|------------|------|------|------|
+| `Z_XVT__.EXE` | 1,369,088 B (1.34 MB) | 1997-04-15 | **Main game binary** (the recomp target) |
+| `XWINGTIE.EXE` | 322,560 B | 1997-04-16 | Front-end launcher / loader |
+
+## Binary Analysis — `Z_XVT__.EXE`
+
+Parsed with the **unmodified XWA toolchain** (`pefile`), confirming the pipeline generalizes to a second Totally Games title:
+
+| Property | Value | vs XWA |
+|----------|-------|--------|
+| **Architecture** | x86-32, PE32 | same |
+| **Image base** | `0x00400000` | same |
+| **Entry point** | `0x004FD970` | — |
+| **Timestamp** | 1997-04-16 | 2 yrs older |
+| **Linker version** | 4.20 (Visual C++ 4.x era) | XWA = VC6 |
+| **Copy protection** | **None** — no SafeDisc, no `.bind`, `.text` directly analyzable | XWA = SafeDisc v1 (runtime decryption) |
+| **Relocations** | `.reloc` present (relocatable) | XWA = none (fixed base) |
+| **Code (.text)** | `0x401000`, vsize `0x113204` (~1.1 MB) | XWA = ~1.7 MB |
+| **Data (.data)** | `0x517000`, vsize `0x638BE0` (~6.2 MB) | XWA = ~5.4 MB |
+
+### Import Summary
+
+| DLL | Functions | Purpose |
+|-----|-----------|---------|
+| KERNEL32.dll | 109 | Core Win32 APIs |
+| USER32.dll | 33 | Window management, input |
+| GDI32.dll | 17 | Font/text rendering |
+| WINMM.dll | 14 | Joystick, timers, CD audio |
+| MSACM32.dll | 5 | Audio codec (ACM) — FMV/voice |
+| ADVAPI32.dll | 4 | Registry (settings) |
+| **DPLAYX.dll** | **3** | **DirectPlay (multiplayer) — 3× XWA's usage** |
+| DDRAW.dll | 1 | DirectDraw |
+| DINPUT.dll | 1 | DirectInput |
+| DSOUND.dll | 1 | DirectSound |
+
+### First cross-validation observations
+
+1. **The toolchain reproduces** — `pefile` (and by extension `disasm`/`lifter`/`generate`) parse XvT with zero target-specific changes. XWA's success was not the result of XWA-only hacks.
+2. **XvT is *simpler* to recompile than XWA** — no SafeDisc means the `.text` needs no runtime decryption dump (`tools/dump_memory.py` is unnecessary), and `.reloc` gives us ground-truth for pointer sites.
+3. **DirectPlay is more prominent** (3 imports vs XWA's 1), matching the multiplayer-first 1997 design. This is the payoff for the effort: the session/create subsystem that gates XWA craft instantiation (XWA memory #48–75) should surface here more directly, since in XvT the DirectPlay object-create path is the *primary* flow, not a single-player special case.
 
 ## Planned Methodology (mirrors XWA)
 
