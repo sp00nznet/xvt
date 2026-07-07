@@ -153,6 +153,29 @@ hosts a local session with no remote clients). That caller + provider is the
 XWA SP-loopback blueprint. Requires the full `disasm.py` function-discovery pass
 to enumerate callers cleanly.
 
+## Subsystem structure (function-discovery pass)
+
+Call-target analysis over `.text` (the XWA toolchain's core discovery method,
+run unmodified) finds **1,673 function candidates** — same order of magnitude as
+XWA's 2,702, smaller binary. This is a second reproducibility datapoint.
+
+DirectPlay session layer, bottom-up:
+
+| Layer | Address | Role | Callers |
+|-------|---------|------|---------|
+| API thunks | `0x4F87AE/B4/BA` | `jmp [DPLAYX IAT]` | — |
+| Session-create (host/join) | `0x4C21A0` | contains `DirectPlayCreate` @`0x4C23A8` **and** @`0x4C2577` (two modes in one fn) | `0x4B3E5E`, `0x4CC434`, `0x4CCC5C`, `0x4D45A5` |
+| Session-create (provider) | `0x4C4DD0` | `create_session(providerGUID)` | `0x4CC673` |
+| Provider resolver | `0x4C32A0` | resolve/validate provider GUID | (shared) |
+| **Mode/management layer** | **`~0x4CC000–0x4CCC00`** | selects host / join / SP and drives the create fns | (entry from menu/game flow) |
+| Session globals | `0xA70605`, `0xA70609` | raw + versioned `IDirectPlay` | — |
+
+**The `~0x4CCxxx` cluster is where single-player vs multiplayer is decided** —
+`0x4CC434`, `0x4CC673`, `0x4CCC5C` all call into the session-create functions.
+Reading this layer identifies which call path instant-action/training takes and
+with which provider GUID; that path is XvT's SP session-establish and the
+reference for the XWA SP create loopback.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
