@@ -45,6 +45,36 @@ the region to map against XWA's `sub_004E7A10` (create-broadcast),
 - No SafeDisc: `.text` is scanned directly from the on-disk image (no runtime
   decryption dump needed, unlike XWA).
 
+## Session-object creation (disassembled)
+
+The `DirectPlayCreate` call at `0x4C2577` (function starting `0x4C2558`) reads
+cleanly:
+
+```asm
+0x4C2560  call 0x4C32A0        ; obtain provider/connection GUID (-> eax)
+0x4C2568  test eax, eax
+0x4C256A  je   0x4C2A6A        ; bail if no provider
+0x4C2570  push ebx             ; pUnkOuter (0)
+0x4C2571  push 0xA70605        ; &lpDP  <-- global for the IDirectPlay object
+0x4C2576  push eax             ; lpGUID
+0x4C2577  call DirectPlayCreate ; -> HRESULT
+0x4C257E  jne  0x4C2A8E        ; bail on failure
+0x4C2584  mov  eax, [0xA70605] ; the created IDirectPlay object
+0x4C258A  mov  ebp, [eax]      ; vtable
+0x4C258C  call [ebp + 8]       ; initialize the object
+```
+
+**`0xA70605` is XvT's IDirectPlay session-object global** — the direct analogue
+of the XWA DirectPlay object/session that single-player force-launch could not
+bootstrap (XWA `0xB0C7BC`/`0x77330C`). Here it is created in plain sight, no
+SafeDisc obfuscation. This is the reference point for understanding how the
+Totally Games engine stands up its session before the craft-create messages
+flow — the exact step missing in XWA SP.
+
+Open question to answer next: does XvT's **single-player / instant-action** mode
+also create a (loopback) DirectPlay session through this path? If so, this code
+*is* the blueprint for the XWA SP create loopback.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
