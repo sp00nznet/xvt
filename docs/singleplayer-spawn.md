@@ -48,6 +48,20 @@ Two clusters reference the mission buffer heavily — the mission load/select co
    an alternative to the DirectPlay loopback that the XWA effort proved does not
    converge under forcing.
 
+## Object model (partial)
+
+- Craft/object **record stride = `0xEC` (236 bytes)** — the only dominant
+  `imul r,r,imm` stride in `.text` (11 sites, `~0x40Fxxx`). Compact vs XWA's
+  `0xBCF` (3023), consistent with the older 1997 engine.
+- A game-state base pointer **`0x9D39B8`** is dereferenced alongside these
+  accesses (`mov ecx,[0x9D39B8]; ... [ecx+idx+field]`), with per-entry fields at
+  small offsets (`+0x19`, `+0x1A`, `+0x1F`, `+0x7F`). This is the region to
+  resolve into the craft array + the spawn that fills it.
+- Cross-map target: XWA's craft-record array is `0x8B94E0` (stride `0xBCF`), with
+  active byte `+0x8B94F1`, craft type `+0x8B94F0` (from `FG+2`). Establishing the
+  XvT field correspondences (active/type/pos) at stride `0xEC` gives the
+  per-craft recipe XWA's `sub_0041EF60` needs.
+
 ## Status
 
 XvT SP mission-load entry located (`0x517108` filename buffer, `sub_0x455B80`
