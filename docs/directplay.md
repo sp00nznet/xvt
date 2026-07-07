@@ -75,6 +75,25 @@ Open question to answer next: does XvT's **single-player / instant-action** mode
 also create a (loopback) DirectPlay session through this path? If so, this code
 *is* the blueprint for the XWA SP create loopback.
 
+## Three session-setup paths
+
+The IDirectPlay object global `0xA70605` is referenced at **12 sites in three
+clusters**, one per `DirectPlayCreate` call — i.e. three distinct session-setup
+functions:
+
+| Cluster | `0xA70605` refs | `DirectPlayCreate` | Likely role |
+|---------|-----------------|--------------------|-------------|
+| A | `0x4C23A3, 0x4C23BB, 0x4C23CD, 0x4C23D9` | `0x4C23A8` | one setup mode (host?) |
+| B | `0x4C2572, 0x4C2585, 0x4C25A1, 0x4C2A3E` | `0x4C2577` | another (join?) |
+| C | `0x4C4E26, 0x4C4E7C, 0x4C4E8D, 0x4C4E99` | `0x4C4E2B` | third mode (lobby / instant-action?) |
+
+Identifying which cluster is entered by **single-player / instant-action** is
+the crux: that path is XvT's equivalent of the XWA SP create loopback. The
+three-way split is itself a useful structural comparison — XWA's SP object
+create funnels through one custom loopback (`sub_0052CEE0` send → dispatcher),
+so seeing how XvT selects among host/join/local here should clarify what the
+XWA SP path is emulating.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
