@@ -94,6 +94,33 @@ create funnels through one custom loopback (`sub_0052CEE0` send → dispatcher),
 so seeing how XvT selects among host/join/local here should clarify what the
 XWA SP path is emulating.
 
+## Cluster C detail (`0x4C4E2B`) — versioned-interface acquisition
+
+```asm
+0x4C4E23  push 0             ; pUnkOuter
+0x4C4E25  push 0xA70605      ; &lpDP
+0x4C4E2A  push eax           ; lpGUID  <-- provider GUID (selects loopback vs network)
+0x4C4E2B  call DirectPlayCreate
+0x4C4E32  je   0x4C4E76      ; on SUCCESS ->
+   ... (failure path: sub_0x4BE020(6,&buf) + error string 0x5258B0 + sub_0x4C86E0 dialog)
+0x4C4E76  push 0xA70609      ; &lpDPvN  (output: upgraded interface)
+0x4C4E7B  mov  eax,[0xA70605]
+0x4C4E82  push 0x5152B0      ; IID_IDirectPlayN (interface-version GUID, in .rdata)
+0x4C4E88  call [vtable+0]    ; QueryInterface -> IDirectPlay2/3/4 into 0xA70609
+0x4C4E94  call [vtable+8]    ; initialize / AddRef
+```
+
+- `0xA70605` = raw `IDirectPlay` from `DirectPlayCreate`; **`0xA70609` = the
+  versioned interface** (`IDirectPlay2A`/`3A`/`4A`) the game actually uses.
+- The **provider GUID in `eax`** at the `DirectPlayCreate` call is the
+  single-player-vs-network discriminant. DirectPlay's loopback/"single-player"
+  service provider vs the TCP/IPX/modem providers is chosen by this GUID. The
+  cluster whose provider resolves to the local/loopback GUID is XvT's SP path —
+  and its craft-create-message flow is the XWA SP-loopback blueprint.
+
+**Trace next:** back-track `eax` (the provider GUID source) for clusters A/B/C
+to identify which is entered by instant-action/training (single-player).
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
