@@ -176,6 +176,48 @@ Reading this layer identifies which call path instant-action/training takes and
 with which provider GUID; that path is XvT's SP session-establish and the
 reference for the XWA SP create loopback.
 
+## Connection-type selection (the SP/MP switch)
+
+The caller `0x4CC673` invokes `sub_0x4C4DD0` with **7 args**:
+
+```asm
+0x4CC626  mov eax,[0x525A50]; cmp eax,-1; je proceed   ; gate: state must be -1
+   push [0xB4E5FC]          ; arg7 = connection-type selector (BYTE)
+   push 0x20                ; arg6 = size (32)
+   push &localbuf           ; arg5
+   push [0x5151FC]          ; arg4 \
+   push [0x5151F8]          ; arg3  } args1-4 = 16-byte APPLICATION GUID @0x5151F0
+   push [0x5151F4]          ; arg2  |   {09438C20-E06A-11CE-8681-00AA006C5D57}
+   push [0x5151F0]          ; arg1 /
+   call sub_0x4C4DD0
+```
+
+Inside `sub_0x4C4DD0`, arg7 (`[esp+0x17C]`) is passed to `sub_0x4C32A0`, which
+**resolves the connection-type byte to a DirectPlay service-provider GUID**
+(none/serial/modem/IPX/TCPIP), then hands it to `DirectPlayCreate`.
+
+Key globals identified:
+
+| Global | Meaning |
+|--------|---------|
+| `0xB4E5FC` | **connection-type selector** (set by the connection menu; the SP/MP switch) |
+| `0x5151F0` | DirectPlay **application GUID** `{09438C20-E06A-11CE-8681-00AA006C5D57}` |
+| `0x5152B0` | interface IID `{9D460580-A822-11CF-960C-0080C7534E82}` (IDirectPlayN QI) |
+| `0x525A50` | session state gate (must be `-1` to (re)create) |
+| `sub_0x4C32A0` | connection-type → service-provider-GUID resolver |
+
+**The XWA parallel:** XWA's SP object-create is gated on the session flag
+`0x77330C` (= `0xB0C7BC & 0xFF`) and never bootstraps because force-launch skips
+connection setup. XvT exposes the equivalent switch as a single readable byte
+`0xB4E5FC` feeding a provider resolver. Determining the value `0xB4E5FC` takes
+for **instant-action/training** (single-player) — and whether that provider is a
+real network SP or a null/local one — tells us exactly what a Totally Games
+single-player session looks like, i.e. what the XWA SP loopback must synthesize.
+
+**Trace next:** find writers of `0xB4E5FC` in the connection/menu code to read
+off the single-player value, then follow that session into the craft-create
+message flow.
+
 ## Next steps
 
 1. Run `disasm.py` function discovery over `.text` to get exact function
