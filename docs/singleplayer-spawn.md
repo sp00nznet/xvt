@@ -68,3 +68,68 @@ XvT SP mission-load entry located (`0x517108` filename buffer, `sub_0x455B80`
 file-op, mission code at `0x406xxx`/`0x454xxx`). The `.tie`→craft-spawn trace and
 the XWA mapping are the next unit. XWA flight remains black; this is the most
 promising redirect surfaced by the cross-validation, not a completed fix.
+
+## Spawn/activation function FOUND — `sub_00409390` (2026-07-08)
+
+Located via the stride-`0xEC` craft indexing + state-base `0x9D39B8`. `sub_00409390`
+(recomp gen line ~11705) is the **per-craft activation loop** — the local, non-DP
+routine that tags flight-group craft active + render-visible. Caller: `0x004DC947`
+(mission driver). Inner loop at `~0x40F79C`:
+
+- `eax = [0x9D39B8]` — deref game-state base → object table.
+- `edx = [eax + esi + 0x1F]` — per-entry **object pointer** at record offset `+0x1F`
+  (esi = entry index * stride).
+- `[base + esi + 0x1A] = 2` — **ACTIVE tag** ⇔ XWA craft record `+0x11 = 2`.
+- `[obj + 0x2CA] = 4` then `2` — **render-status byte in {2,4}** ⇔ XWA render-visibility
+  status `{1,2,4}` (XWA `sub_004652F0` builds the per-frame visible list `0x68BD68`
+  from craft whose status byte ∈ {1,2}, transparent `0x68BCE0` from {4}).
+- `[obj + 0x90] = 1`, `[obj + 0x89] = [obj+0x90]`, `[edx + 0x7F] = idx*0xEC` (self record xref).
+
+### Cross-validation payoff (direct XWA relevance)
+This confirms XvT single-player activates + render-tags craft through a **local path
+with NO DirectPlay** — the same conclusion the XWA effort arrived at from the other
+side (XWA #165: render path works when fed geometry; the DP loopback caused early-exit;
+force-launch reached flight-init but the DP path never sustained). The `+0x1A=2` active
+tag and `+0x2CA ∈ {2,4}` render-status map onto the exact XWA fields the render reads.
+=> XWA route candidate: drive the local builder `sub_0041EF60` and set the analogous
+active + render-status fields, rather than the DP loopback.
+
+NEXT: read the FULL per-craft field set `sub_00409390` writes (type, position,
+orientation, iff/ai) — that's the complete recipe to port to XWA's local spawn. Then
+trace its caller `0x004DC947` back to the `.tie` parse (`sub_00455B80` chain).
+
+## Per-craft field recipe extracted (sub_00409390 spawn loop ~0x40F6C0–0x40F82B)
+
+Two structures per flight group (mirrors XWA's FG-descriptor + object split):
+- **FG-descriptor table**: `[0x9D39B8]` deref → base; per-entry stride **0x23 (35)**
+  (idx: `esi=idx*8-idx=idx*7`, then `esi+=esi*4` → `idx*0x23`). *(XWA analogue: FG
+  table `0x7B33C4`, stride 0x27.)*
+- **Object record**: pointer stored at `fg+0x1F`; stride **0xEC**. *(XWA analogue:
+  `ro=FG+0x23`, craft-object stride 0xBCF.)*
+
+Per-craft writes in the spawn loop (position scatter uses RNG `sub_00477EC0`):
+| Write | Field | Meaning |
+|-------|-------|---------|
+| `[fg+0x10] += bx` | position component A (+0x8000 wrap) | spawn X w/ random scatter |
+| `[fg+0x12] += di` | position component B (neg if ≥0x8000) | spawn Y w/ random scatter |
+| `[obj+0x77] = bp` | orientation/heading word | facing (RNG-derived) |
+| `[fg+0x1A] = 2` | **ACTIVE tag** | ⇔ XWA craft `+0x11 = 2` |
+| `[obj+0x2CA] = 4` then `2` | **render-status** | ⇔ XWA render status {1,2,4} (sub_004652F0 visible-list filter) |
+| `[obj+0x90] = 1`, `[obj+0x89] = [obj+0x90]` | object state flags | |
+| `[obj+0x7F]... ` / `[edx+0x7F]=idx*0xEC` | self record xref | |
+
+`sub_00477EC0` = the RNG (called ~5×/craft) — spawn positions/orientation are
+scattered around a mission-defined point. So a craft is "spawned" by: allocate its
+object (ptr into `fg+0x1F`), set position (`fg+0x10/0x12`) + orientation (`obj+0x77`),
+tag active (`fg+0x1A=2`), tag render-visible (`obj+0x2CA∈{2,4}`), set state flags.
+
+### Port to XWA (the black-frame fix candidate)
+XWA's per-frame render (`sub_004652F0`) and camera (`sub_004EE820`) crash on craft whose
+object/render-object fields are unset (XWA #164/#166). The XvT recipe says the MISSING
+writes are: object position (XWA craft `+0xB48` region / ro world pos), orientation
+(ro matrix), active `+0x11=2`, and the render-status byte on the ro-scene-manager object
+array (`ro+0xDD` → `+0x2E1` entries, status ∈{1,2,4}). Populate these on every FG's craft
+BEFORE flight-init links them (`sub_0041EDF0`) and the camera/render stop faulting →
+flight-init completes → 3D-frame cb `0x0049E600` ticks → render draws (proven to build a
+real visible list). Field-offset mapping (0x23↔0x27 FG stride, 0xEC↔0xBCF object) must be
+done per-field, not assumed identical.
