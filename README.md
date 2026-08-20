@@ -47,15 +47,13 @@ code. **2,924 recompiled calls and 1,114 indirect calls** before it stops at
 
 ## Why This Repo — Cross-Validation with XWA
 
-The [XWA recomp](https://github.com/sp00nznet/xwa) has "drilled down plenty": full boot, concourse rendering, and a complete instruction-level map of the flight-entry path. It reaches 3D flight but the flight view is black because the **single-player DirectPlay session / per-flight-group craft-create subsystem** is not yet reimplemented — mission craft are instantiated by a session-gated, message-driven loopback that the force-launch path bypasses.
+The [XWA recomp](https://github.com/sp00nznet/xwa) has drilled down plenty: full boot, concourse rendering, screen-to-screen menu navigation, and a complete instruction-level map of the flight-entry path. It now **enters 3D flight and presents frames** — the remaining problem there is *ship geometry*: the craft in the scene are not coherently populated, so the vertex transform reads placeholder positions and the ships do not render as ships.
 
-XvT runs the **same engine family, two years earlier**, with a smaller executable and (typically) a cleaner separation of the same subsystems. Recompiling it lets us:
+XvT runs the **same engine family, two years earlier**, with a smaller executable and a cleaner separation of the same subsystems. Recompiling it lets us:
 
-- **Confirm reproducibility** — the same toolchain (`pe_analyze` → `disasm` → `lifter` → `generate`) should recompile a second Totally Games title with only per-binary config changes. If it doesn't, our XWA success relied on target-specific hacks.
-- **Validate engine findings** — cross-check the object/flight-group record layout, the FG→craft-type mapping (`FG+2`), and especially the **DP session-establish + create-message flow** against XvT's implementation, where the multiplayer-first design of 1997 may expose the session/create path more explicitly.
-- **Illuminate the XWA blocker** — the exact `sub_004E7A10` (create broadcast) / `sub_004F91C0` (receive dispatch) / session-flag (`0x77330C`) mechanics that gate XWA craft instantiation almost certainly have simpler analogues here.
-
-See the XWA repo's `memory/` notes (#48–75) for the full flight-entry create-pipeline map this project aims to corroborate.
+- **Confirm reproducibility** — the same toolchain (`pe_analyze` → `disasm` → `lifter` → `generate`) should recompile a second Totally Games title with only per-binary config changes. If it doesn't, the XWA success relied on target-specific hacks. *(Confirmed: it does — and running the result surfaced eight genuine lifter bugs neither project would have found by compiling alone.)*
+- **Validate engine findings** — cross-check the object/flight-group record layout, the FG→craft-type mapping (`FG+2`), and the craft-create flow against XvT's implementation.
+- **Illuminate the XWA blocker** — XvT's single-player craft spawn is **local**, with no DirectPlay involved (`docs/directplay.md`, `docs/singleplayer-spawn.md`), and its per-craft field recipe — flight-group stride `0x23`, object record at `fg+0x1F` with stride `0xEC`, active tag `fg+0x1A = 2`, render status `obj+0x2CA ∈ {2,4}` — is the reference for what XWA's own local builder needs to write. That reframing came out of this repo, and it is the currently-live hypothesis for XWA's geometry problem.
 
 ## Engine Lineage
 
@@ -71,20 +69,18 @@ See the XWA repo's `memory/` notes (#48–75) for the full flight-entry create-p
 
 ## Target Media (Phase 0 — done)
 
-Present on disk under `G:\recomp\pc\xwingvstiefighter\` (not committed — see `.gitignore`):
-
-| File | Size | Notes |
-|------|------|-------|
-| `Star Wars X-Wing vs Tie Fighter - Master Game Disc (LucasArts) (1997).iso` | ~154 MB | Retail single-disc image — **executables extracted from here** |
-| `Star Wars X-Wing vs Tie Fighter - Multiplayer Disc (LucasArts) (1997).iso` | ~156 MB | Multiplayer disc |
-| `Disc.rar` | ~437 MB | Archived disc set (incl. Balance of Power) |
-
-Extracted to git-ignored `game_data/` via `7z`:
+You supply your own copy of the game. The retail **Master Game Disc** carries the
+executables this project targets; extract them to a `game_data/` directory at the
+repository root (git-ignored, along with any disc images):
 
 | Executable | Size | Date | Role |
 |------------|------|------|------|
 | `Z_XVT__.EXE` | 1,369,088 B (1.34 MB) | 1997-04-15 | **Main game binary** (the recomp target) |
 | `XWINGTIE.EXE` | 322,560 B | 1997-04-16 | Front-end launcher / loader |
+
+Both sit in the disc root and copy out directly; no installer or unpacking step
+is needed. The Multiplayer disc and the *Balance of Power* expansion are not
+required for anything currently implemented.
 
 ## Binary Analysis — `Z_XVT__.EXE`
 
@@ -129,7 +125,9 @@ Parsed with the **unmodified XWA toolchain** (`pefile`), confirming the pipeline
 
 5. **XvT's CRT is materially easier than XWA's.** XWA had to bypass its VC6 CRT startup entirely (it crashed in locale/env init) and hand-initialise the small-block-heap threshold, the CRT lock table, the heap handle and `_pctype` before calling `WinMain` directly. XvT's VC4.x CRT startup runs *unmodified* all the way into `WinMain` — no bypass, no CRT-global patching, and `g_manual_overrides[]` is still empty. Two years earlier really is two years simpler, which is the cross-validation thesis holding up.
 
-6. **And the traffic runs both ways — XWA has since found a bug XvT still has.** XWA's `recomp_types.h` now declares the x87 stack **global** (`extern double _st[8]`); it used to be a per-function `double _st[8] = {0}`, so any guest function returning a value in `st(0)` returned a zeroed local copy — which is what made the CRT `__ftol` helper return 0 for every float→int conversion. XvT's generated code still has the per-function version. It has not bitten yet (nothing before the DirectDraw wall depends on an FPU return value), but it will the moment flight math runs. Fixing it is the first item queued for the next session — see `docs/roadmap.md`.
+6. **And the traffic runs both ways — XWA has since found four FPU bugs XvT still has.** While chasing garbage vertices in its flight view, the XWA effort traced them to the shared lifter: the x87 stack was modelled per-function (so any guest function returning a value in `st(0)` handed back a zeroed local — which made the CRT `__ftol` return 0 for *every* float→int conversion); `fstp st(i)` was off by one; `fxch` lifted to a no-op; and, most insidiously, **the `ST(i)` register IDs were hardcoded to Capstone 4's numbering** while both projects build against Capstone 5, so every FPU register operand indexed *negatively* into the stack array. XvT's output has all four. None has bitten yet — nothing before the DirectDraw wall touches the FPU — but flight math touches all of them, so they are queued as one batched fix ahead of Phase 9. See `docs/roadmap.md` → "Known issues, queued".
+
+   Which is the cross-validation working as designed, in both directions: XvT found four lifter bugs by *running* where XWA had only compiled, and XWA found four more by getting far enough into 3D to see them.
 
 ## Methodology (mirrors XWA)
 
@@ -156,7 +154,7 @@ recomp/
 ├── config/                     # pe_analysis.json, functions.json
 ├── docs/                       # roadmap + engine analysis notes
 ├── CMakeLists.txt              # MSVC 2022 x86 build
-├── CLAUDE.md                   # AI assistant project context
+├── LICENSE                     # MIT (this project's own source only)
 └── README.md                   # This file
 ```
 
@@ -194,7 +192,16 @@ point (`0x004FD970`, the guest CRT startup).
 
 ## Legal
 
-This project is for game-preservation purposes. You must own a legal copy of Star Wars: X-Wing vs TIE Fighter (and Balance of Power) to use this tool. **No copyrighted game assets, disc images, or executables are included in this repository** — the ISOs/RAR shown above are user-supplied and git-ignored.
+This project is for game-preservation purposes. You must own a legal copy of
+Star Wars: X-Wing vs TIE Fighter to use it. **No copyrighted game assets, disc
+images, or executables are included in this repository** — you supply your own,
+and `game_data/` plus all disc-image formats are git-ignored.
+
+The project's own source — the toolchain, runtime, and documentation — is
+released under the [MIT License](LICENSE). That covers this repository's code
+only; it grants no rights in the game itself, which remains the property of its
+copyright holders. Star Wars and X-Wing vs TIE Fighter are trademarks of their
+respective owners; this project is unaffiliated with and unendorsed by them.
 
 ## Related Projects
 

@@ -178,20 +178,23 @@ The reason this repo exists. Two deliverables:
 
 ## Known issues, queued
 
-**1. The x87 stack is per-function and must be global.** Generated code declares
-`double _st[8] = {0}` inside every function, so a guest function that returns a
-value in `st(0)` returns a zeroed local copy to its caller. XWA hit this and has
-already fixed it — `recomp_types.h` there now declares `extern double _st[8]`
-and `extern int _fp_top` — after tracing it to the CRT `__ftol` helper returning
-0 for *every* float→int conversion. XvT has not been bitten yet because nothing
-before the DirectDraw wall depends on an FPU return value, but flight math will
-hit it immediately.
+**1. The FPU model is broken in four distinct ways.** All four were found by the
+XWA effort while chasing garbage vertices in its flight view, and all four are in
+XvT's current output. None has bitten yet — nothing before the DirectDraw wall
+depends on FPU behaviour — but flight math touches every one of them. Fix them as
+a batch, before Phase 9, in a single regen (~35 min).
 
-The fix is two-part and should be done before Phase 9: move `_st`/`_fp_top` to
-globals in `recomp_types.h` + `main.c`, and stop `lifter.py` emitting the local
-declarations in each function prologue. That means a full regen (~35 min), so it
-is worth batching with any other lifter change. **Do this first next session** —
-debugging flight math on a broken FPU return path would waste a lot of time.
+| # | Bug | Fix |
+|---|-----|-----|
+| a | **`ST(i)` register numbering.** The lifter hardcodes Capstone 4's IDs (`224 <= reg <= 231`). **Capstone 5 numbers `st(0)`–`st(7)` as 114–121**, and this project builds against capstone 5.0.7 — so every `fmul st(1)` / `fxch st(1)` / `fstp st(i)` lifts to a *negative* index into the 8-element `_st` array. Out-of-bounds reads; this is where XWA's inf/NaN vertex projection came from | Import `X86_REG_ST0`/`X86_REG_ST7` and index off the symbol |
+| b | **The x87 stack is per-function.** `double _st[8] = {0}` is declared inside every function, so a guest function returning a value in `st(0)` hands back a zeroed local. XWA traced this to the CRT `__ftol` helper returning 0 for *every* float→int conversion | Move `_st`/`_fp_top` to globals in `recomp_types.h` + `main.c`; stop `lifter.py` emitting the locals in the prologue |
+| c | **`fstp st(i)` is off by one.** It copies `st(0)` into `st(i)` and *then* pops, so the target slot is `i-1` after the shift. Writing `_st[i]` post-pop stores one slot too high; for the common `fstp st(0)` "discard" form it writes the popped value straight back, undoing the pop | Special-case `i == 0` as a plain discard; otherwise write `_st[i-1]` |
+| d | **`fxch` is a no-op.** Capstone exposes the operands as `(st(0), st(i))`, so reading `ops[0]` yields `st(0)` and every `fxch` in the binary lifts to `_st[0] <-> _st[0]` | Take the *last* operand; treat a bare `fxch` as `fxch st(1)` |
+
+XWA additionally inlines two CRT helpers (`__ftol` and the FP epilogue) at fixed
+VAs to work around (b). With (b) properly fixed — a genuinely global x87 stack —
+that workaround should be unnecessary here; XvT's equivalents have not been
+located and probably do not need to be. Confirm rather than assume.
 
 **2. Data-referenced functions are not discovered.** `sub_004C81E0` (the WndProc)
 is referenced only as a `WNDCLASS` field, so neither the call-target scan nor the
