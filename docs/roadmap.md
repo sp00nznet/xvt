@@ -153,12 +153,22 @@ The prior sessions' static analysis already mapped the route (`docs/directplay.m
 1. Mission select → `.tie` load (`sub_00455B80` chain, filename buffer `0x517108`).
 2. Craft activation: `sub_00409390`, driven from `0x004DC947`. Per-craft field
    recipe already extracted — FG descriptor stride `0x23`, object record stride
-   `0xEC` at `fg+0x1F`, active tag `fg+0x1A = 2`, render status `obj+0x2CA ∈ {2,4}`.
+   `0xEC` at `fg+0x1F`, active tag `fg+0x1A = 2`, render status `obj+0x2CA ∈ {2,4}`,
+   arrival placement at `fg+0x10`/`fg+0x12` (RNG scatter) and orientation at
+   `obj+0x77`.
 3. Software rasteriser writes the DirectDraw back buffer; Phase 8's present path
    carries it to the screen unchanged.
 
 DirectPlay only needs to work for multiplayer, which is out of scope for
-first flight.
+first flight. **Note the divergence from XWA here** — XWA gates even
+single-player world build on a *local* DirectPlay session create (session name =
+mission path with a `~` prefix); XvT does not. Do not port XWA's session
+workarounds on the assumption the engines match: on this subsystem they do not.
+
+The placement fields in step 2 are, as of 2026-08-22, the most directly useful
+thing this repo holds for XWA: XWA now submits real `.tie` geometry but every
+object reports position `(0,0,0)`, so its mission stacks at the origin and
+projects off-screen. Arrival placement is exactly what `sub_00409390` writes.
 
 ## Phase 10 — Cross-validation report
 
