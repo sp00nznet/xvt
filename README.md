@@ -198,16 +198,22 @@ This project is for game-preservation purposes. You must own a legal copy of
 Star Wars: X-Wing vs TIE Fighter to use it. **No copyrighted game assets, disc
 images, or executables are included in this repository** — you supply your own,
 and `game_data/` plus all disc-image formats are git-ignored.
+Neither is the lifted C: it is a derivative work of `Z_XVT__.EXE`, so it is
+generated locally from your own copy (see Building) and `src/game/recomp/gen/`
+is git-ignored too.
 
 The project's own source — the toolchain, runtime, and documentation — is
 released under the [MIT License](LICENSE). That covers this repository's code
-only; it grants no rights in the game itself, which remains the property of its
-copyright holders. Star Wars and X-Wing vs TIE Fighter are trademarks of their
+only; it grants no rights in the game itself, which remains the property of
+LucasArts (now Lucasfilm / Disney), or in the lifted C. See the Scope section
+of [LICENSE](LICENSE). Star Wars and X-Wing vs TIE Fighter are trademarks of their
 respective owners; this project is unaffiliated with and unendorsed by them.
 
 ## Related Projects
 
 Part of the [sp00nznet](https://github.com/sp00nznet) recompilation collection:
+
+- [pcrecomp](https://github.com/sp00nznet/pcrecomp) — the family's shared recompilation toolkit. This repo's `tools/` came from xwa before the lifters were unified there. It is a separate lineage and has not been rebased onto pcrecomp.
 
 - [xwa](https://github.com/sp00nznet/xwa) — X-Wing Alliance recomp (sister engine; primary reference for this project)
 - [burnout3](https://github.com/sp00nznet/burnout3) — Xbox x86 recomp (x86-to-C lifter reference)

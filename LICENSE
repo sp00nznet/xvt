@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 sp00nznet
+Copyright (c) 2026 sp00nz
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Scope
+
+This license covers ONLY the original recompilation code, tooling, runtime and
+documentation in this repository.
+
+It does NOT cover Star Wars: X-Wing vs TIE Fighter, Balance of Power, or any of
+their data. The game is Copyright (c) 1997 LucasArts Entertainment Company
+(now Lucasfilm Ltd. / Disney); Star Wars is a trademark of Lucasfilm Ltd. No
+original game executables, disc images, or other game assets are included in
+this repository.
+
+It also does NOT cover the lifted C that `python -m tools` produces
+(src/game/recomp/gen/). That output is a derivative work of the original
+executable, carries whatever license the original does, and is generated from
+your own copy rather than distributed here. You must supply your own legally
+obtained copy of the game to build and run this project.
